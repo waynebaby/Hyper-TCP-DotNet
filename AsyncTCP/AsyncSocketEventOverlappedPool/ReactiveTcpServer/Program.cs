@@ -17,7 +17,7 @@ namespace ReactiveTcpServer
     {
 
 
-        static ConcurrentDictionary<object, object> bag = new ConcurrentDictionary<object,object>(); 
+        static ConcurrentDictionary<object, object> bag = new ConcurrentDictionary<object, object>();
         static void Main(string[] args)
         {
             if (args.Length != 1)
@@ -27,7 +27,7 @@ namespace ReactiveTcpServer
                 Console.ReadLine();
                 return;
             }
-          
+
             var port = int.Parse(args[0]);
             SocketAsyncEventArgsPool.ConfigBeforeCreateInstance(300000);
             var pool = SocketAsyncEventArgsPool.GetInstance();
@@ -39,21 +39,22 @@ namespace ReactiveTcpServer
                     (
                        socket =>
                        {
-
                            try
                            {
 
 
-                               var client = new ReactiveTCPLibrary.ReactiveTcpClient<object, string>(socket,
-                                   new NaturalCutter<string>(stser),
-                                   new NaturalPacker<string>(stser),
-                                  () => pool.GetResourceTokenFromPool(),
-                                  new NewArrayByteSegmentLocator());
-                               bag.AddOrUpdate(client, client, (a,b)=>client);
+                               var client = new ReactiveTCPLibrary.ReactiveTcpClient<object, string>(
+                                    socket,
+                                    new NaturalCutter<string>(stser),
+                                    new NaturalPacker<string>(stser),
+                                    () => pool.GetResourceTokenFromPool(),
+                                    new NewArrayByteSegmentLocator());
+                               
+                               bag.AddOrUpdate(client, client, (a, b) => client);
+
                                var x = client.Subscribe(p =>
                                {
-                                   
-                                   client.OnNext (new Tuple<string,PacketSentCallback<string>,AbortionChecker>(p,(PacketSentCallback<string>) null,null));
+                                   client.OnNext(new Tuple<string, PacketSentCallback<string>, AbortionChecker>(p, (PacketSentCallback<string>)null, null));
                                });
 
 
@@ -64,12 +65,6 @@ namespace ReactiveTcpServer
 
                                return;
                            }
-                           //      GCHandle.Alloc(client, GCHandleType.Pinned);
-
-
-
-                           //     GCHandle.Alloc(x, GCHandleType.Pinned);
-
 
                        }
 
@@ -89,9 +84,9 @@ namespace ReactiveTcpServer
 
         static void DefaultInstance_ClientException(object sender, ClientExceptionEventArg e)
         {
-            
-            
-            bag.TryRemove(sender ,out sender);
+
+
+            bag.TryRemove(sender, out sender);
 
             try
             {
@@ -100,8 +95,8 @@ namespace ReactiveTcpServer
             }
             catch (Exception)
             {
-                
-                
+
+
             }
 
         }

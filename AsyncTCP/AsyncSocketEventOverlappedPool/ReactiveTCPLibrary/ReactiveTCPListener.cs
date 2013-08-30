@@ -28,19 +28,19 @@ namespace ReactiveTCPLibrary
                 .Subscribe(
                     e =>
                     {
-                        AcceptLoop(e.EventArgs);
+                        AsyncAcceptOneOrSyncLoopAll(e.EventArgs);
                     }
                 );
 
             var socket = _socket;
             if (socket != null)
             {
-                AcceptLoop(eventArg);
+                AsyncAcceptOneOrSyncLoopAll(eventArg);
             }
 
         }
 
-        private void AcceptLoop(SocketAsyncEventArgs eventArgs)
+        private void AsyncAcceptOneOrSyncLoopAll(SocketAsyncEventArgs eventArgs)
         {
             var isAsync = false;
             while (!isAsync)

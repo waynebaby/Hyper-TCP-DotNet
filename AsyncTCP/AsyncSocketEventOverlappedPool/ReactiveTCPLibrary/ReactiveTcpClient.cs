@@ -15,6 +15,7 @@ using ReactiveTCPLibrary.Packet;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks.Dataflow;
 
 namespace ReactiveTCPLibrary
 {
@@ -24,10 +25,16 @@ namespace ReactiveTCPLibrary
     /// </summary>
     /// <typeparam name="TConnectionContext">一个表示Connection状态的内容类型，一般与业务逻辑上的Connection标识相关</typeparam>
     /// <typeparam name="TPacket">表示发送和接收的数据包基类类型。可以为Object或者一个公用接口</typeparam>
-    public class ReactiveTcpClient<TConnectionContext, TPacket> : IDisposable, ReactiveTCPLibrary.IReactiveTcpClient<TConnectionContext, TPacket>
+    public class ReactiveTcpClient<TConnectionContext, TPacket> : IDisposable, ReactiveTCPLibrary.IReactiveTcpClient<TConnectionContext, TPacket>, IAsyncTcpClient<TConnectionContext, TPacket>
     {
 
 
+
+        public virtual ConcurrentExclusiveSchedulerPair ExecutionSchedulerPair
+        {
+            get;
+            set;
+        }
 
         /// <summary>
         /// 启动标记，0表示尚未启动，1表示已经启动
@@ -81,9 +88,17 @@ namespace ReactiveTCPLibrary
 
 
         /// <summary>
-        /// 收到且解析完毕的包序列
+        /// 收到且解析完毕的包缓存
         /// </summary>
-        Subject<TPacket> _packetReceivedSubject;
+        BufferBlock<TPacket> _packetReceivedBuffer;
+        /// <summary>
+        /// 收到且解析完毕的包序列出口
+        /// </summary>
+        IObservable<TPacket> _packetReceivedObservable;
+        /// <summary>
+        /// 收到且解析完毕的包序列入口
+        /// </summary>
+        IObserver<TPacket> _packetReceivedObserver;
 
         /// <summary>
         /// 准备发送的包的队列
@@ -101,10 +116,6 @@ namespace ReactiveTCPLibrary
         /// </summary>
         IByteSegmentLocator _byteSegmentLocator;
 
-        /// <summary>
-        /// 已经发送的包序列
-        /// </summary>
-        Subject<TPacket> _packetSentSubject;
 
         /// <summary>
         /// 开始发送的信号序列
@@ -142,6 +153,8 @@ namespace ReactiveTCPLibrary
             )
         {
 
+
+
             //Contract.Requires<ArgumentNullException>(dataCutter != null, "Parameter dataCutter cannot be null.");
             //Contract.Requires<ArgumentNullException>(dataPacker != null, "Parameter dataPacker cannot be null.");
             //Contract.Requires<ArgumentNullException>(eventArgsfactory != null, "Parameter eventArgsfactory cannot be null.");
@@ -150,6 +163,8 @@ namespace ReactiveTCPLibrary
             //Contract.Requires<ArgumentException>(socket.Connected, "Parameter socket must be open.");
 
             //_disposeActionList.Push(() => socket.Dispose());
+            ExecutionSchedulerPair = new ConcurrentExclusiveSchedulerPair();
+
             _dataCutter = dataCutter;
             _dataPacker = dataPacker;
 
@@ -181,13 +196,12 @@ namespace ReactiveTCPLibrary
             _sendingQueue = new ConcurrentQueue<Tuple<Queue<ArraySegment<byte>>, AsyncCallback, AbortionChecker>>();
 
 
-            _packetReceivedSubject = new Subject<TPacket>();
-            _packetSentSubject = new Subject<TPacket>();
+            _packetReceivedBuffer = new BufferBlock<TPacket>();
+            _packetReceivedObservable = _packetReceivedObservable.AsObservable();
+            _packetReceivedObserver = _packetReceivedBuffer.AsObserver();
             _sendLaucherSubject = new Subject<SocketAsyncEventArgs>();
 
 
-            _disposeActionList.Push(() => _packetReceivedSubject.Dispose());
-            _disposeActionList.Push(() => _packetSentSubject.Dispose());
             _disposeActionList.Push(() => _sendLaucherSubject.Dispose());
 
 
@@ -435,7 +449,7 @@ namespace ReactiveTCPLibrary
 
             //将 ICutter 与 _packetSubject 关联            
             var cutterSub = _dataCutter.Subscribe(
-                o => _packetReceivedSubject.OnNext(o),
+                o => _packetReceivedObserver.OnNext(o),
                 e =>
                 {
                     EventContainer.OnClientException(
@@ -443,9 +457,9 @@ namespace ReactiveTCPLibrary
                     EventSource.Deserializing,
                     new SocketException("Socket error or closed by remote."),
                     null);
-                    _packetReceivedSubject.OnError(e);
+                    _packetReceivedObserver.OnError(e);
                 },
-                () => _packetReceivedSubject.OnCompleted()
+                () => _packetReceivedObserver.OnCompleted()
 
                 );
             _disposeActionList.Push(() => cutterSub.Dispose());
@@ -589,7 +603,7 @@ namespace ReactiveTCPLibrary
             //Contract.Requires<InvalidOperationException>(Started, "Should call Start() before send any packet.");
             try
             {
-                InternalSendingQueueEnqueue(value.Item1, value.Item2,value.Item3);
+                InternalSendingQueueEnqueue(value.Item1, value.Item2, value.Item3);
             }
             catch (Exception ex)
             {
@@ -603,7 +617,7 @@ namespace ReactiveTCPLibrary
             //Contract.Requires<InvalidOperationException>(Started, "Should call Start() before send any packet.");
             try
             {
-                InternalSendingQueueEnqueue(value.Item1, value.Item2,value.Item3);
+                InternalSendingQueueEnqueue(value.Item1, value.Item2, value.Item3);
             }
             catch (Exception ex)
             {
@@ -614,7 +628,7 @@ namespace ReactiveTCPLibrary
 
         public IDisposable Subscribe(IObserver<TPacket> observer)
         {
-            return _packetReceivedSubject.Subscribe(observer);
+            return _packetReceivedObservable.Subscribe(observer);
 
         }
 
@@ -638,5 +652,48 @@ namespace ReactiveTCPLibrary
 
             }
         }
+
+
+        public async Task<TPacket> GetPacketAsync(CancellationToken cancellationToken)
+        {
+            return await _packetReceivedBuffer.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+
+
+        public async Task SendPackAsync(TPacket[] packets, bool waitUntilComplete, CancellationToken cancellationToken)
+        {
+
+            if (waitUntilComplete)
+            {
+                var rval = new Task(() => { });
+                OnNext(new Tuple<TPacket[], PacketSentCallback<TPacket[]>, AbortionChecker>(packets, _ => rval.Start(), () => cancellationToken.IsCancellationRequested));
+                await rval.ConfigureAwait(false);
+            }
+            else
+            {
+                OnNext(new Tuple<TPacket[], PacketSentCallback<TPacket[]>, AbortionChecker>(packets, null, () => cancellationToken.IsCancellationRequested));
+
+            }
+
+        }
+
+        public async Task SendPackAsync(TPacket packet, bool waitUntilComplete, CancellationToken cancellationToken)
+        {
+
+            if (waitUntilComplete)
+            {
+                var rval = new Task(() => { });
+                OnNext(new Tuple<TPacket, PacketSentCallback<TPacket>, AbortionChecker>(packet, _ => rval.Start(), () => cancellationToken.IsCancellationRequested));
+                await rval.ConfigureAwait(false);
+            }
+            else
+            {
+                OnNext(new Tuple<TPacket, PacketSentCallback<TPacket>, AbortionChecker>(packet, null, () => cancellationToken.IsCancellationRequested));
+
+            }
+
+        }
+
     }
 }

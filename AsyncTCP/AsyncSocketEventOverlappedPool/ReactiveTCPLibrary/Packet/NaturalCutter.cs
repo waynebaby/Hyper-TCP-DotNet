@@ -3,15 +3,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using ReactiveTCPLibrary.Utilities;
+using System.Threading.Tasks;
 
 namespace ReactiveTCPLibrary.Packet
 {
-    public class NaturalCutter<T> :CutterBase<T>, ICutter<T>
+    public class NaturalCutter<T> : CutterBase<T>, ICutter<T>
     {
-        public NaturalCutter(ISerializer<T> serializer,bool asyncSerializationAndOnNext=true)
-            : base(serializer, asyncSerializationAndOnNext)
-        { 
-        
+        public NaturalCutter(ISerializer<T> serializer)
+            : base(serializer)
+        {
+
         }
 
 
@@ -21,9 +22,9 @@ namespace ReactiveTCPLibrary.Packet
             return new SegmentStream(segs);
         }
 
-        protected override void OperationBeforeEnqueue(ArraySegment<byte> dataSegment)
+        protected override void OnProcessingReceivedDataSegment(ArraySegment<byte> dataSegment)
         {
-            
+
         }
     }
 }

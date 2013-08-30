@@ -5,6 +5,7 @@ using System.Text;
 using ReactiveTCPLibrary.ByteSegmentLocators;
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
+using System.Threading.Tasks;
 
 namespace ReactiveTCPLibrary.Packet
 {
@@ -12,6 +13,7 @@ namespace ReactiveTCPLibrary.Packet
     {
       ////  void ReceiveDataSegment(ArraySegment<byte> dataSegment);
       //  IObservable<T> PacketsReceived{get;}
+        ConcurrentExclusiveSchedulerPair ExecutionSchedulerPair { get; set; }
     }
 
 

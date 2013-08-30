@@ -35,5 +35,11 @@ namespace ReactiveTCPLibrary.Packet
         {
             sub.Dispose();
         }
+
+        public System.Threading.Tasks.ConcurrentExclusiveSchedulerPair ExecutionSchedulerPair
+        {
+            get;
+            set;
+        }
     }
 }

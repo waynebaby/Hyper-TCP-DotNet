@@ -8,45 +8,54 @@ using ReactiveTCPLibrary.Utilities;
 using System.Reactive.Subjects;
 using System.Reactive.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace ReactiveTCPLibrary.Packet
 {
     public abstract class CutterBase<T> : ICutter<T>
     {
-        public CutterBase(ISerializer<T> serializer, bool asyncSerializationAndOnNext)
+        public CutterBase(ISerializer<T> serializer)
         {
-            //Contract.Requires<ArgumentNullException>(serializer != null);
+        
             _serializer = serializer;
-            _packetsReceivedSubject = new Subject<T>();            
+            _packetsReceivedSubject = new Subject<T>();
             _dataSegmentsReceived = new Queue<ArraySegment<byte>>();
-            _asyncSerializationAndOnNext = asyncSerializationAndOnNext;
+
         }
+
+
+        public virtual ConcurrentExclusiveSchedulerPair ExecutionSchedulerPair
+        {
+            get;
+            set;
+        }
+
 
         protected ISerializer<T> _serializer;
         protected int _offsetDelta;
         protected int _totalLength;
-        protected bool _asyncSerializationAndOnNext;
+
         Queue<ArraySegment<byte>> _dataSegmentsReceived;
 
 
 
         #region Abstracts
         protected abstract SegmentStream CutSegmentSequenceIntoStream(IEnumerable<ArraySegment<byte>> source);
-        protected abstract void OperationBeforeEnqueue(ArraySegment<byte> dataSegment);
+        protected abstract void OnProcessingReceivedDataSegment(ArraySegment<byte> dataSegment);
         #endregion
 
 
 
 
 
-        private void ReceiveDataSegment(ArraySegment<byte> dataSegment)
+        private void ProcessReceivedDataSegment(ArraySegment<byte> dataSegment)
         {
             try
             {
-                OperationBeforeEnqueue(dataSegment);
+                OnProcessingReceivedDataSegment(dataSegment);
                 _dataSegmentsReceived.Enqueue(dataSegment);
                 _totalLength = _totalLength + dataSegment.Count;
-                InternalGetPacket(_asyncSerializationAndOnNext);
+                InternalGetPacket();
             }
             catch (Exception ex)
             {
@@ -60,7 +69,7 @@ namespace ReactiveTCPLibrary.Packet
 
 
         Subject<T> _packetsReceivedSubject;
- 
+
 
         #region Private Methods
 
@@ -96,7 +105,7 @@ namespace ReactiveTCPLibrary.Packet
         }
 
 
-        private void InternalGetPacket(bool asyncSerializationAndOnNext)
+        private void InternalGetPacket()
         {
             var segmentCount = 0;
             var cutLength = 0;
@@ -109,7 +118,7 @@ namespace ReactiveTCPLibrary.Packet
                 first = _dataSegmentsReceived.Peek();
                 first = new ArraySegment<byte>(first.Array, _offsetDelta, first.Count - _offsetDelta);
                 param = Enumerable.Range(0, 1).Select(x => first)
-                    .Union(_dataSegmentsReceived.Skip(1));
+                    .Concat(_dataSegmentsReceived.Skip(1));
             }
             else
             {
@@ -120,17 +129,7 @@ namespace ReactiveTCPLibrary.Packet
             cutLength = (int)stream.Length;
             segmentCount = stream.SegmentCount;
 
-            WaitCallback action = _ => _packetsReceivedSubject.OnNext(_serializer.Read(stream));
-
-            if (asyncSerializationAndOnNext)
-            {
-                ThreadPool.QueueUserWorkItem(action, null);
-            }
-            else
-            {
-                action(null);
-            }
-
+            _packetsReceivedSubject.OnNext(_serializer.Read(stream));
             _totalLength = _totalLength - cutLength;
             InternalDequeueUsedSegments(segmentCount, cutLength);
 
@@ -150,7 +149,7 @@ namespace ReactiveTCPLibrary.Packet
 
         public void OnNext(ArraySegment<byte> value)
         {
-            ReceiveDataSegment(value);
+            ProcessReceivedDataSegment(value);
         }
 
         public IDisposable Subscribe(IObserver<T> observer)

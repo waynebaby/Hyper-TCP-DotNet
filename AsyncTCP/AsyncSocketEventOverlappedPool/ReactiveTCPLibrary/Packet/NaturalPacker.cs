@@ -8,7 +8,7 @@ using ReactiveTCPLibrary.Utilities;
 
 namespace ReactiveTCPLibrary.Packet
 {
-    public class NaturalPacker<T> : IPacker<T>
+    public class NaturalPacker<T> : PackerBase<T>
     {
 
         public NaturalPacker(ISerializer<T> serializer)
@@ -19,19 +19,19 @@ namespace ReactiveTCPLibrary.Packet
 
         ISerializer<T> _serializer;
 
-        public byte[] GetBytes(T obj)
+        public override byte[] GetBytes(T obj)
         {
             var ms = new MemoryStream();
             _serializer.WriteObject(obj, ms);
             return ms.ToArray();
         }
 
-        public IList<ArraySegment<byte>> GetByteSegments(T obj, ByteSegmentLocators.IByteSegmentLocator nextSegmentLocator, int segmentMaxSize)
+        public override IList<ArraySegment<byte>> GetByteSegments(T obj, ByteSegmentLocators.IByteSegmentLocator nextSegmentLocator, int segmentMaxSize)
         {
             var strm = new SegmentStream(size => nextSegmentLocator.GetNextSegment(size > segmentMaxSize ? segmentMaxSize : size));
             _serializer.WriteObject(obj, strm);
             return strm.GetSegments();
-            
+
         }
     }
 }

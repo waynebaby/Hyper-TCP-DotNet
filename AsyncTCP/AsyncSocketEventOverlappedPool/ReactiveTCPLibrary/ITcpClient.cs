@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Net.Sockets;
 using System.ComponentModel;
 using System.Threading;
+using System.Threading.Tasks;
 namespace ReactiveTCPLibrary
 {
 
@@ -56,6 +57,7 @@ namespace ReactiveTCPLibrary
     public interface ITcpClient<TConnectionContext, TPacket> :        
         IDisposable
     {
+        ConcurrentExclusiveSchedulerPair ExecutionSchedulerPair { get; }
         bool Connected { get; }
         TConnectionContext ConnectionContext { get; set; }
         ITcpClientEventContainer EventContainer { get; }
@@ -73,9 +75,9 @@ namespace ReactiveTCPLibrary
     }
     public interface IAsyncTcpClient<TConnectionContext, TPacket> : ITcpClient<TConnectionContext, TPacket>
     {
-        ConfiguredTaskAwaitable<TPacket> GetPacketAsync(CancellationToken cancellationToken);
-        ConfiguredTaskAwaitable SendPackAsync(TPacket packet, bool waitUntilComplete,CancellationToken cancellationToken);
-        ConfiguredTaskAwaitable SendPackAsync(TPacket[] packets, bool waitUntilComplete,CancellationToken cancellationToken);
+        Task <TPacket> GetPacketAsync(CancellationToken cancellationToken);
+        Task SendPackAsync(TPacket packet, bool waitUntilComplete, CancellationToken cancellationToken);
+        Task SendPackAsync(TPacket[] packets, bool waitUntilComplete, CancellationToken cancellationToken);
     }
     /// <summary>
     /// 检测是否取消操作的代理方法
