@@ -197,7 +197,7 @@ namespace ReactiveTCPLibrary
 
 
             _packetReceivedBuffer = new BufferBlock<TPacket>();
-            _packetReceivedObservable = _packetReceivedObservable.AsObservable();
+            _packetReceivedObservable = _packetReceivedBuffer.AsObservable();
             _packetReceivedObserver = _packetReceivedBuffer.AsObserver();
             _sendLaucherSubject = new Subject<SocketAsyncEventArgs>();
 
